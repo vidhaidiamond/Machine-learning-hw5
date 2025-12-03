@@ -1,0 +1,189 @@
+import torch
+import torch.nn as nn
+
+# --- Sub-task a: Initialize Dimensions ---
+d_model = 512    # Dimension of the model (input/output embedding size)
+n_head = 8       # Number of attention heads
+d_ff = 2048      # Dimension of the feed-forward network's inner layer
+dropout_rate = 0.1 # Dropout rate
+class AddNorm(nn.Module):
+    """
+    Applies Layer Normalization followed by a residual connection (x + sublayer(x)).
+    Note: A common implementation (Post-Norm) applies the sublayer first, then norm.
+          This implementation uses the 'Add' (Residual) first, then 'Norm' layer.
+          For simplicity here, we assume the sublayer is passed as the input `sublayer_output`.
+    """
+    def __init__(self, d_model: int, dropout_rate: float):
+        super().__init__()
+        # nn.LayerNorm normalizes across the last dimension (d_model)
+        self.norm = nn.LayerNorm(d_model)
+        self.dropout = nn.Dropout(dropout_rate)
+
+    def forward(self, x: torch.Tensor, sublayer_output: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x (torch.Tensor): The input tensor before the sublayer (for residual connection).
+            sublayer_output (torch.Tensor): The output of the sublayer (e.g., Attention or FFN).
+
+        Returns:
+            torch.Tensor: The final normalized output.
+        """
+        # 1. Add (Residual Connection): Input + Sublayer Output
+        added_output = x + self.dropout(sublayer_output)
+        
+        # 2. Norm (Layer Normalization)
+        return self.norm(added_output)
+
+
+class PositionWiseFeedForward(nn.Module):
+    """
+    The two-layer Feed-Forward Network (FFN) used in the Transformer block.
+    """
+    def __init__(self, d_model: int, d_ff: int, dropout_rate: float):
+        super().__init__()
+        self.net = nn.Sequential(
+            # 1. Linear layer: d_model -> d_ff
+            nn.Linear(d_model, d_ff),
+            # ReLU activation
+            nn.ReLU(),
+            nn.Dropout(dropout_rate),
+            # 2. Linear layer: d_ff -> d_model
+            nn.Linear(d_ff, d_model)
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x)
+class AddNorm(nn.Module):
+    """
+    Applies Layer Normalization followed by a residual connection (x + sublayer(x)).
+    Note: A common implementation (Post-Norm) applies the sublayer first, then norm.
+          This implementation uses the 'Add' (Residual) first, then 'Norm' layer.
+          For simplicity here, we assume the sublayer is passed as the input `sublayer_output`.
+    """
+    def __init__(self, d_model: int, dropout_rate: float):
+        super().__init__()
+        # nn.LayerNorm normalizes across the last dimension (d_model)
+        self.norm = nn.LayerNorm(d_model)
+        self.dropout = nn.Dropout(dropout_rate)
+
+    def forward(self, x: torch.Tensor, sublayer_output: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x (torch.Tensor): The input tensor before the sublayer (for residual connection).
+            sublayer_output (torch.Tensor): The output of the sublayer (e.g., Attention or FFN).
+
+        Returns:
+            torch.Tensor: The final normalized output.
+        """
+        # 1. Add (Residual Connection): Input + Sublayer Output
+        added_output = x + self.dropout(sublayer_output)
+        
+        # 2. Norm (Layer Normalization)
+        return self.norm(added_output)
+
+
+class PositionWiseFeedForward(nn.Module):
+    """
+    The two-layer Feed-Forward Network (FFN) used in the Transformer block.
+    """
+    def __init__(self, d_model: int, d_ff: int, dropout_rate: float):
+        super().__init__()
+        self.net = nn.Sequential(
+            # 1. Linear layer: d_model -> d_ff
+            nn.Linear(d_model, d_ff),
+            # ReLU activation
+            nn.ReLU(),
+            nn.Dropout(dropout_rate),
+            # 2. Linear layer: d_ff -> d_model
+            nn.Linear(d_ff, d_model)
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x)
+class TransformerEncoderBlock(nn.Module):
+    def __init__(self, d_model: int, n_head: int, d_ff: int, dropout_rate: float):
+        super().__init__()
+        
+        # 1. Multi-Head Self-Attention (MHA)
+        # For self-attention, Q, K, and V all come from the same input (x)
+        self.self_attn = nn.MultiheadAttention(
+            embed_dim=d_model, 
+            num_heads=n_head, 
+            dropout=dropout_rate, 
+            batch_first=True # Makes input shape (Batch, Seq, Feature)
+        )
+        
+        # 2. First Add & Norm layer (after MHA)
+        self.add_norm_attn = AddNorm(d_model, dropout_rate)
+        
+        # 3. Position-wise Feed-Forward Network (FFN)
+        self.ffn = PositionWiseFeedForward(d_model, d_ff, dropout_rate)
+        
+        # 4. Second Add & Norm layer (after FFN)
+        self.add_norm_ffn = AddNorm(d_model, dropout_rate)
+        
+    # --- Sub-task b: Add residual connections and layer normalization ---
+    def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
+        """
+        Forward pass for the Encoder Block.
+        
+        Args:
+            x (torch.Tensor): Input embeddings/tensor (Batch, Seq_len, d_model).
+            mask (torch.Tensor, optional): Self-attention mask. Defaults to None.
+            
+        Returns:
+            torch.Tensor: Output tensor (Batch, Seq_len, d_model).
+        """
+        
+        # --- 1. Multi-Head Self-Attention Sub-layer ---
+        # The MHA layer takes Q, K, V as the same tensor (x) for self-attention
+        attn_output, _ = self.self_attn(
+            query=x, 
+            key=x, 
+            value=x, 
+            attn_mask=mask, 
+            need_weights=False
+        )
+        
+        # --- 2. Add & Norm (MHA) ---
+        # Output is LayerNorm(x + Dropout(attn_output))
+        norm_output_attn = self.add_norm_attn(x, attn_output)
+        
+        # --- 3. Feed-Forward Network Sub-layer ---
+        ffn_output = self.ffn(norm_output_attn)
+        
+        # --- 4. Add & Norm (FFN) ---
+        # Output is LayerNorm(norm_output_attn + Dropout(ffn_output))
+        output = self.add_norm_ffn(norm_output_attn, ffn_output)
+        
+        return output
+# --- Sub-task c: Verification ---
+# Define the batch input parameters
+BATCH_SIZE = 32
+SEQ_LEN = 10
+ # Initialize the Encoder Block
+encoder_block = TransformerEncoderBlock(
+    d_model=d_model, 
+    n_head=n_head, 
+    d_ff=d_ff, 
+    dropout_rate=dropout_rate
+)
+
+# Create a dummy input tensor
+# Shape: (Batch_size, Sequence_length, d_model)
+dummy_input = torch.rand(BATCH_SIZE, SEQ_LEN, d_model) 
+
+# Pass the input through the block
+output = encoder_block(dummy_input)
+
+# Expected Shape: (32, 10, 512)
+expected_shape = (BATCH_SIZE, SEQ_LEN, d_model)
+
+print("\n--- Verification of Output Shape ---")
+print(f"Input Tensor Shape: {dummy_input.shape}")
+print(f"Output Tensor Shape: {output.shape}")
+
+if output.shape == expected_shape:
+    print(f"✅ Shape Verified: The output shape matches the expected shape {expected_shape}.")
+else:
+    print(f"❌ Shape Mismatch: Expected {expected_shape}, but got {output.shape}.")
