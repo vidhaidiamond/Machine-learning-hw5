@@ -1,0 +1,88 @@
+import numpy as np
+
+def scaled_dot_product_attention(Q, K, V):
+    """
+    Computes the Scaled Dot-Product Attention.
+
+    This function performs the core attention calculation:
+    1. Calculates raw attention scores (Q * K^T).
+    2. Scales the scores by the square root of the key dimension (d_k).
+    3. Normalizes the scaled scores using Softmax to get attention weights.
+    4. Computes the context vector (Attention Weights * V).
+
+    Args:
+        Q (np.ndarray): Query matrix, shape (N, d_k).
+        K (np.ndarray): Key matrix, shape (M, d_k). M is the sequence length.
+        V (np.ndarray): Value matrix, shape (M, d_v).
+
+    Returns:
+        tuple: (context_vector, attention_weights)
+            - context_vector (np.ndarray): The resulting context vector, shape (N, d_v).
+            - attention_weights (np.ndarray): The normalized attention weights, shape (N, M).
+    """
+    # 1. Calculate raw attention scores: Q * K^T
+    # This matrix multiplication results in a shape (N, M)
+    # N = number of queries, M = sequence length
+    attention_scores = np.dot(Q, K.T)
+
+    # 2. Scale the scores
+    # d_k is the dimension of the keys (and queries)
+    d_k = K.shape[1]
+    scaling_factor = np.sqrt(d_k)
+    scaled_scores = attention_scores / scaling_factor
+
+    # 3. Apply Softmax to get attention weights
+    # The softmax function is applied row-wise (axis=1) across the sequence length (M)
+    # The max subtraction trick improves numerical stability
+    exp_scores = np.exp(scaled_scores - np.max(scaled_scores, axis=1, keepdims=True))
+    attention_weights = exp_scores / np.sum(exp_scores, axis=1, keepdims=True)
+
+    # 4. Compute the context vector
+    # This is the weighted sum of the Value matrix V
+    # Shape: (N, M) * (M, d_v) = (N, d_v)
+    context_vector = np.dot(attention_weights, V)
+
+    return context_vector, attention_weights
+
+# --- Example Usage ---
+
+# Define dimensions:
+# N = number of queries (batch size or output sequence length) = 2
+# M = sequence length (input sequence length) = 4
+# d_k = dimension of keys/queries = 3
+# d_v = dimension of values = 5
+
+N, M, d_k, d_v = 2, 4, 3, 5
+
+# 1. Initialize random matrices for Q, K, V
+# Q (2, 3): 2 queries, each of dim 3
+Q = np.random.rand(N, d_k)
+# K (4, 3): 4 key vectors, each of dim 3
+K = np.random.rand(M, d_k)
+# V (4, 5): 4 value vectors, each of dim 5
+V = np.random.rand(M, d_v)
+
+print(f"--- Inputs ---")
+print(f"Query Matrix Q (Shape {Q.shape}):\n{Q}\n")
+print(f"Key Matrix K (Shape {K.shape}):\n{K}\n")
+print(f"Value Matrix V (Shape {V.shape}):\n{V}\n")
+
+# Compute the attention
+context_output, weights = scaled_dot_product_attention(Q, K, V)
+
+print(f"--- Outputs ---")
+print(f"Attention Weights (Shape {weights.shape}):")
+print("(Sum of each row should be 1.0)")
+print(weights)
+
+print(f"\nContext Vector (Shape {context_output.shape}):")
+print("(This is the output of the attention layer)")
+print(context_output)
+
+# Verification check: Check if the attention weights sum to 1.0 (approximately)
+row_sums = np.sum(weights, axis=1)
+print(f"\nRow sums of Attention Weights: {row_sums}")
+assert np.allclose(row_sums, 1.0), "Attention weights do not sum to 1.0"
+
+
+#
